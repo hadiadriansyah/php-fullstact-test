@@ -1,0 +1,143 @@
+### Create Connection Postgresql and Redis
+
+## Connection - Postgresql
+$db_conn = pg_connect("host=localhost port=5432 dbname=phpfullstacktest user=postgres password=password");
+
+if ($db_conn) {
+    die("Error: Unable to connect to the database");
+}
+
+## Connection - Redis
+$redis = new Redis();
+$redis->connect('127:0.0.1', 6379);
+
+#### Answer A, C, D, and E
+### CRUD table my_clinet 
+
+require 'db_conn.php';
+require 'redis_conn.php';
+
+function createClient($data) {
+    global $dbconn, $redis;
+
+    $query = "INSERT INTO my_client (name, slug, is_project, client_prefix, client_logo, address, phone_number, city) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)";
+
+    $result = $pg_query_params($db_conn, $query, $data);
+
+    if ($result) {
+        $redis->set($data['slug'], json_encode($data));
+        return "Client created successfullty";
+    } else {
+        return "Error creating client";
+    }
+}
+
+function getClient($slug) {
+    global $dbconn, $redis;
+
+    // Check redis
+    $cachedRedisClient = $redis->get($slug);
+
+    if ($cachedRedisClient) {
+        return json_decode($cachedRedisClient, true);
+    }
+
+    $query = "SELECT * FROM my_client WHERE slug = $1";
+
+    $result = $pg_query_params($db_conn, $query, array($slug));
+
+    if ($result) {
+        $client = pg_fetch_assoc($result);
+        $redis->set($data['slug'], json_encode($client));
+        return $client;
+    } else {
+        return "Client not found";
+    }
+}
+
+function updateClient($slug, $data) {
+    global $dbconn, $redis;
+
+    $query = "UPDATE my_client SET name = $1, is_project = $2, client_prefix = $3, client_logo = $4, address = $5, phone_number = $6, city = $7 WHERE slug = $8";
+
+    $result = $pg_query_params($db_conn, $query, $data);
+
+    if ($result) {
+        $redis->del($slug);
+        $redis->set($data['slug'], json_encode($data));
+        return "Client updated successfullty";
+    } else {
+        return "Error updating client";
+    }
+}
+
+function deleteClient($slug) {
+
+    global $dbconn, $redis;
+
+    $query = "UPDATE my_client SET deleted_at = NOW() WHERE slug = $1";
+
+    $result = $pg_query_params($db_conn, $query, array($slug));
+
+    if ($result) {
+        $redis->del($slug);
+        return "Client soft deleted successfullty";
+    } else {
+        return "Error deleting client";
+    }
+
+}
+
+#### Answer C
+### Upload image client_logo
+##install AWS SDK
+
+composer require aws/aws-sdk-php
+
+## Upload Image
+
+require 'vendor/autoload.php';
+
+use Aws\S3\S3Client;
+use Aws\S3\Exception\S3Exception;
+
+# Upload to AWS
+function uploadToAwsS3($filePath, $bucketName, $keyName) {
+    $client = S3Client::factory(
+        array(
+            'key'    => "my-key",
+            'secret' => "my secret key"
+        )
+    );
+
+    try {
+        $client->putObject(array(
+            'Bucket'=> $bucketName,
+            'Key' =>  $keyName,
+            'SourceFile' => $filePath,
+            'StorageClass' => 'REDUCED_REDUNDANCY'
+        ));
+    } catch (S3Exception $e) {
+        echo $e->getMessage();
+    }
+}
+
+# Upload to Database
+
+function uploadClientLogo($slug, $filePathe) {
+
+    $fileUrlS3 = uploadToAwsS3($filePath, 'my-bucket-name', 'my-key-name')
+
+    global $dbconn, $redis;
+
+    $query = "UPDATE my_client SET client_logo = $1, WHERE slug = $2";
+
+    $result = $pg_query_params($db_conn, $query, array($fileUrlS3, $slug));
+
+    if ($result) {
+        return "Client logo updated successfullty";
+    } else {
+        return "Error updating client";
+    }
+}
+
